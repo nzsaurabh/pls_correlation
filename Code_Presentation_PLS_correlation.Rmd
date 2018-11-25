@@ -1,0 +1,391 @@
+---
+title: "Social Media and Art Patronage"
+subtitle: "STATS 767 Project"
+author: "Saurabh Gupta"
+date: "17th October 2018"
+output: 
+  beamer_presentation:
+    theme: "AnnArbor"
+    colortheme: "dolphin"
+    fonttheme: "structurebold"
+    slide_level: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, cache = TRUE, message=FALSE, warning = FALSE,
+                      comment=NA)
+```
+
+Introduction
+========================
+
+## Effect of Social Media on Art Patronage
+
+**Research Question:** *Is the social media presence of creators (artists) related to their online patrons?*
+
+Patreon.com is an online platform that allows creators to seek Patrons (similar to paid subscribers) pledging to pay as little as \$1 per month to more than \$1000.
+
+- The payments and the distribution technology is taken care of by Patreon in exchange for a 5% fee (and some charges).
+- It hosts more than 122 thousand creators and 4 million pledges.
+
+\footnotetext{Notes: Brand and creator names used in this presentation are copyrights of their respective owners. The data has been sourced from {\tt Patreon.com and Graphtreon.com}. It cannot not be published without their permission.}
+
+## The dataset
+
+Time series data on the number of Patrons and 5 social media statistics for top 103 creators in different categories.
+
+- 103 rows wherein each creator is an observation
+- 138 variables (columns) include 23 months' data for 6 variables
+- Social media metrics include Facebook Likes, Twitter Followers, YouTube Subscribers, YouTube Videos and YouTube Views
+- Data is measured on the 1st of each month
+- The time series window is from 1st July 2016 to 1st May 2018
+
+## Number of Patrons for 10 random creators
+
+```{r}
+library(knitr)
+library(mixOmics)
+library(vegan)
+set.seed(767)
+```
+
+
+```{r, fig.align= "center", out.width= '60%'}
+
+include_graphics("figures/Patrons.pdf")
+```
+
+
+## Methodology
+
+The trend in all variables can result in spurious correlations. To take a closer and unbiased look, we may detrend the data by regressing each of the variables on time period $t=(1, 2, \dots, 23)$. 
+
+The number of Patrons aren't expected to increase indefinitely. Hence, I used quadratic function of time to detrend the data. After detrending, we are left with the residuals. They represent the variability in the data.
+
+## Patrons after quadratic detrending
+
+```{r, fig.align= "center", out.width= '60%'}
+
+include_graphics("figures/Patrons_detrend.pdf")
+```
+
+
+## Methodology (contd.)
+
+The number of variables, $p=138$ is larger than the number of observations, $n=103$. Hence, I will perform PLS Correlation to check the relationship  between variability in social media metrics and the number of Patrons.
+
+- Let, Y denote the variability in Patrons for each of the 23 months.
+- X denotes the the variability in social media metrics for the same period. 
+
+## The variables
+
+```{r}
+#install.packages("mixOmics")
+library("mixOmics")
+```
+
+```{r}
+load("data/saurabh767data2.rda")
+```
+
+
+```{r, echo = FALSE}
+# columns containing Patrons
+Patrons.index <- grep("^Patron", colnames(MV_patreon) )
+
+ytvideos.index <- grep("^Youtube.Videos", colnames(MV_patreon) )
+
+category.index <- grep("^Category", colnames(MV_patreon) )
+
+names.index <- grep("^Name", colnames(MV_patreon) )
+
+# Response
+Y <- as.matrix(MV_patreon[,Patrons.index ])
+cat("Dimensions of Y\n")
+dim(Y)
+
+#cat("Names of first 10 Response Variables\n")
+kable(colnames(Y)[1:5], col.names = "Names of first 5 Y Variables")
+
+```
+
+****
+
+```{r}
+
+# Covariates 
+X <- as.matrix(MV_patreon[, -c(Patrons.index, category.index, names.index) ])
+cat("Dimensions of X\n")
+dim(X)
+
+kable(colnames(X)[1:5], col.names = "Names of first 5 X variables")
+```
+
+# Partial Least Squares Correlation
+
+## Correlation between the first pair of canonical variates
+
+
+```{r}
+# PLS
+all.pls <- pls(X, Y, mode="canonical")
+```
+
+
+Scaling of variables is done by default in the $\texttt{pls}$ function in $\textbf{R}$. The X and Y scores are stored in PLS object $\texttt{variates}$.
+
+Approximately 10-11% permutations have larger correlation than observed for the first axis and 11-12% for the second axis. This implies that there is weak evidence of a relationship between Patrons and social media metrics.
+
+```{r}
+observed <- cor(all.pls$variates[[1]][,1], all.pls$variates[[2]][,1])
+
+socialcors <- rep(NA, 1000)
+
+for(i in 1:1000){
+perm <- sample(1:103)
+
+mod <- pls(X, Y[perm,])
+
+socialcors[i] <- cor(mod$variates[[1]][,1],mod$variates[[2]][,1])
+}
+
+
+# correlation
+cat(paste0("Observed Correlation: " , round(observed, 2), "\n"))
+
+#pvalue
+cat(paste0("p-value of correlation based on 1000 permutations: " ,
+           sum(socialcors > observed)/1000, "\n"))
+
+```
+
+## Correlation between the second pair
+
+```{r}
+observed2 <- cor(all.pls$variates[[1]][,2], all.pls$variates[[2]][,2])
+
+socialcors2 <- rep(NA, 1000)
+
+for(i in 1:1000){
+perm <- sample(1:103)
+
+mod <- pls(X, Y[perm,])
+
+socialcors2[i] <- cor(mod$variates[[1]][,1],mod$variates[[2]][,1])
+}
+
+# correlation
+cat(paste0("Observed Correlation: " , round(observed2, 2), "\n"))
+
+#pvalue
+cat(paste0("p-value of correlation based on 1000 permutations: " ,
+           sum(socialcors2 > observed2)/1000, "\n"))
+```
+
+
+## Biplots
+
+
+```{r}
+n <- ncol(Y)
+patrons.cor <- matrix(NA, nrow= n, ncol = 2)
+
+# correlation between original Y data and first two pls scores of Y
+for(i in 1: n){
+patrons.cor[i,1] <- cor(Y[,i], all.pls$variates$Y[,1])
+patrons.cor[i,2] <- cor(Y[,i], all.pls$variates$Y[,2])
+}
+
+# correlation between covariates and first two pls scores of X
+
+n <- ncol(X)
+social.cor <- matrix(NA, nrow = n, ncol = 2)
+
+for(i in 1:n){
+social.cor[i,1] <- cor(X[,i], all.pls$variates$X[,1])
+social.cor[i,2] <- cor(X[,i], all.pls$variates$X[,2])
+}
+
+# name the rows
+rownames(social.cor) <- colnames(X)
+rownames(patrons.cor) <- 1:nrow(patrons.cor)
+
+# column names
+colnames(social.cor)<-c("PLS1", "PLS2")
+colnames(patrons.cor)<-c("PLS1", "PLS2")
+
+```
+
+
+```{r}
+# relabel names for biplot
+
+rnames <- rownames(social.cor)
+
+first <- substr(rnames, start =1, stop = 1)
+
+middle <- sub("^.*\\.([A-Z]).*" , "\\1" , rnames)
+
+last <- sub("^[A-z]*.{1}[A-z]*_{1}([0-9]*)([0-9]+)$" , "\\1\\2" , rnames)
+
+newnames <-paste0(first, last)
+
+bi.social <- social.cor
+
+rownames(bi.social) <- newnames
+
+
+```
+
+
+```{r}
+
+# create biplot object
+social.bip <- list(Eigenvalues=rep(1,2), p.perm=NULL,
+                  Cy = all.pls$variates[[2]], 
+                  Cx = all.pls$variates[[1]], 
+                  corr.Y.Cy = patrons.cor,
+                  corr.X.Cx = bi.social)
+
+class(social.bip) <- "CCorA"
+
+
+# biplot
+
+biplot(social.bip)
+```
+
+## Months well represented by PLS axes of Y
+
+The biplot for $\textbf{Y}$ (bottom left on previous slide) indicates:
+
+- Months 5 to 8 have high positive correlation with axis 1. These were the periods with apparently lower variability (not tested statistically).
+- First 3 months and 13 to 16 have high negative correlation with axis 1. These were the periods with high variability.
+- Axis 2 doesn't have high correlation with most months (except 14, 21).
+
+## X variables well represented by PLS
+
+The biplots for $\textbf{X}$ (bottom right) indicate:
+
+- Facebook Page Likes (F1 - F23 in the biplots) are well respresented by PLS axis 1
+- Twitter Followers (T1 - T23 in the biplots) are well represented by PLS axis 2
+
+This implies that their relationship is strongest with variability in Patrons. The values are printed for clarity on the next few slides.
+
+## Outliers
+
+The component plots in the top row indicate:
+
+- For $\textbf{Y}$ variables, there are atleast 2 outliers - creator 41 and 31
+- For $\textbf{X}$ variables, there are more outliers
+- We also observed from the time series plots of residuals that there have been some extreme months.
+
+The outliers may adversely affect our results and interpretation such as reducing correlations for other creators. 
+
+## PLS axis 1: Highest correlations with X
+
+```{r}
+
+sortedpls1 <- sort(social.cor[,1], decreasing = TRUE)
+
+kable(round(head(sortedpls1), 2), col.names = "Positive Corr.")
+
+```
+
+***
+
+```{r}
+
+sortedpls1 <- sort(social.cor[,1], decreasing = FALSE)
+
+kable(round(head(sortedpls1), 2), col.names = "Negative Corr.")  
+```
+
+***
+
+The first PLS axis for $\textbf{X}$ has the highest correlations with $\texttt{Facebook.Likes}$.
+
+- Months 5 to 8 have high negative correlation. This implies if $\texttt{Facebook.Likes}$ don't increase, the score will be higher. For the corresponding first axis of Y, it indicated low variability. 
+- Months 9 to 12 have high positive correlation. They are not represented as clearly by axis 1 of Y and difficult to interpret. It could be a reason why the p-value was borderline.
+
+
+## PLS axis 2: Highest correlations with X
+
+
+```{r}
+
+sortedpls2 <- sort(social.cor[,2], decreasing = TRUE)
+
+kable(round(head(sortedpls2), 2), col.names = "Positive Corr.")
+
+```
+
+***
+
+```{r}
+sortedpls2 <- sort(social.cor[,2], decreasing = FALSE)
+
+kable(round(head(sortedpls2), 2), col.names = "Negative Corr.")  
+```
+
+***
+
+The highest correlation of the second PLS axis is with $\texttt{Twitter.Followers}$.
+
+- Months 4 to 7 and 21, 22 are positively correlated. The corresponding axis of Y is positively correlated with months 9, 10 and 21. It could imply a time lag in the relationship between Twitter and Patrons. 
+- Negative correlations are weaker (closer to 0.5) and more random.
+- It could be another reason for a borderline p-value.
+
+
+## PLS axes: Lowest absolute correlations with social metrics
+
+**PLS axis 1**
+
+```{r}
+
+pls1_low <- sort(abs(sortedpls1), decreasing = FALSE)
+  
+kable(round(head(pls1_low), 2), col.names = "Abs. Corr.")
+
+```
+
+******
+
+**PLS axis 2**
+
+```{r}
+
+pls2_low <- sort(abs(sortedpls2), decreasing = FALSE)
+  
+kable(round(head(pls2_low), 2), col.names = "Abs. Corr.")
+
+```
+
+
+## Lowest absolute correlations
+
+YouTube dominates variables least correlated with the first two PLS axes.
+
+- Videos are expected to have maximum viewer impact. $\texttt{Youtube.Videos}$ may be considered to be a proxy for number of publications. In this context, it is a bit counter-intuitive.
+- However, given that about half the creators aren't video publishers, it seems reasonable.
+- Secondly, the ability to post videos on Facebook and Twitter seem to have taken their toll on YouTube.
+
+# Wrap Up
+
+## Conclusions
+
+- Overall, there is a weak correlation between variability in social metrics and Patrons.
+- Twitter and Facebook have higher correlation with Patrons.
+- It reinforces popular belief that Twitter and Facebook are good platforms for engagement. However, it can have a negative impact as well.
+- Time lag in the effect can be studied further.
+- Effect of You Tube can be investigated separately for Video Creators.
+
+## What more can be done
+
+- The variables have an almost linear trend. 
+- If we regress them over time, $t = (1, 2, \dots, 23)$, we can get the slope and intercept term for each of the variables. 
+- PLS regression can be performed with slope and intercept terms of each metric as variables.
+- This will let us know the effect of social media on the trend in patrons rather than the variability.
+
+
+# Thank You
